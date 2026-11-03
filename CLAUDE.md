@@ -56,3 +56,19 @@ uncached run is 30+ API calls.
 - Tests must stay runnable without network or credentials — `tests/test_pipeline.py`
   has a `FakeClient` returning Yahoo-shaped payloads. Extend it rather than
   adding tests that need a live league.
+
+## Yahoo's approval gate (read this before debugging a 403)
+
+Since July 2026 the Fantasy Sports API requires per-app approval
+(<https://sports.yahoo.com/developer/access/>). An unapproved app gets
+`403 "This application is not authorized to perform this action"` on every
+Fantasy endpoint — including `/fantasy/v2/game/nba`, which needs no user
+context — while OAuth succeeds and tokens issue normally.
+
+That combination is diagnostic. If OAuth works and *everything* Fantasy 403s,
+it is the approval gate, not credentials, not scope, not the app's permission
+checkboxes. `doctor` detects this and prints the application steps. Don't send
+the user hunting through their Yahoo app settings for it.
+
+Also note: Yahoo rejects `localhost` redirect URIs at the authorize step, so
+`YAHOO_REDIRECT_URI=oob` is the only workable value for a desktop script.

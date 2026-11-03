@@ -27,20 +27,34 @@ AUTH_URL = "https://api.login.yahoo.com/oauth2/request_auth"
 TOKEN_URL = "https://api.login.yahoo.com/oauth2/get_token"
 DEFAULT_REDIRECT = "oob"
 
+# Yahoo's Fantasy Sports read scope. Without an explicit scope, Yahoo happily
+# issues a token with no fantasy access at all, and every Fantasy API call then
+# fails with a 403 "This application is not authorized to perform this action"
+# -- which reads like an app misconfiguration but is really a scopeless token.
+# ("fspt-w" is the read/write variant; requesting it on a read-only app is
+# rejected at the authorize step with "invalid scope".)
+DEFAULT_SCOPE = "fspt-r"
+
 
 def redirect_uri() -> str:
     return env("YAHOO_REDIRECT_URI", DEFAULT_REDIRECT) or DEFAULT_REDIRECT
 
 
-def authorize_url(client_id: str, redirect: str) -> str:
-    return f"{AUTH_URL}?" + urlencode(
-        {
-            "client_id": client_id,
-            "redirect_uri": redirect,
-            "response_type": "code",
-            "language": "en-us",
-        }
-    )
+def scope() -> str:
+    return env("YAHOO_SCOPE", DEFAULT_SCOPE) or DEFAULT_SCOPE
+
+
+def authorize_url(client_id: str, redirect: str, scopes: str | None = None) -> str:
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect,
+        "response_type": "code",
+        "language": "en-us",
+    }
+    scopes = DEFAULT_SCOPE if scopes is None else scopes
+    if scopes:
+        params["scope"] = scopes
+    return f"{AUTH_URL}?" + urlencode(params)
 
 
 def extract_code(pasted: str) -> str:
@@ -92,6 +106,7 @@ def exchange_code(code: str, redirect: str) -> dict:
         "refresh_token": payload["refresh_token"],
         "token_type": payload.get("token_type", "bearer"),
         "token_time": time.time(),
+        "scope": payload.get("scope", ""),
     }
     if "xoauth_yahoo_guid" in payload:
         stored["guid"] = payload["xoauth_yahoo_guid"]
@@ -132,7 +147,7 @@ def login(open_browser: bool = True, pasted: str | None = None) -> dict:
     ensure_oauth_file()  # validates credentials exist, writes consumer key/secret
     credentials = read_json(OAUTH_FILE, {}) or {}
     redirect = redirect_uri()
-    url = authorize_url(credentials["consumer_key"], redirect)
+    url = authorize_url(credentials["consumer_key"], redirect, scope())
 
     print("1. Approve access in the browser window that just opened.")
     print("   (If it didn't open, paste this URL yourself:)\n")

@@ -7,6 +7,41 @@ the suggestions.
 
 ## Setup
 
+> ### Before anything else: Yahoo must approve your app
+>
+> **Since July 2026, the Fantasy Sports API is gated behind an approval
+> program.** Creating a Yahoo app and completing OAuth is no longer enough —
+> an unapproved app gets `403 "This application is not authorized to perform
+> this action"` on *every* Fantasy endpoint, including ones that need no user
+> context. OAuth will succeed and tokens will issue normally, which makes this
+> look like a credentials bug. It isn't.
+>
+> Apply at **<https://sports.yahoo.com/developer/access/>**:
+>
+> - **Client ID**: paste the Client ID of the app you create in step 1 below.
+>   (Existing Yahoo Developer Network apps are reused — you don't need a new
+>   one.)
+> - **Expected Users**: `Small (< 1,000 users)`
+> - In the free-text/notes, say plainly what you're building, which Fantasy
+>   data you need, and **that access is limited to personal, single-league
+>   use** — the form explicitly asks applicants to state this.
+>
+> Then sign the **API Access and Use Agreement**, and confirm your Client ID at
+> <https://sports.yahoo.com/developer/application-confirmation/>. Access is
+> provisioned once Yahoo has both the signed agreement and your account info.
+>
+> No timeline is published. Yahoo warns that applications which are incomplete
+> or not detailed enough are "closed without further correspondence," so write
+> a real paragraph rather than one line.
+>
+> Other things worth knowing: the API is **read-only** (write access isn't
+> offered); there's no published rate limit but Yahoo may throttle heavy use;
+> and products are expected to display "Fantasy data provided by Yahoo Fantasy"
+> linking back to Yahoo.
+>
+> Until approval lands, `python -m fantasy doctor` will report the 403 and
+> everything else here will sit idle.
+
 Three steps, and the first one is the only fiddly part.
 
 ### 1. Create a Yahoo app (one time, ~2 minutes)

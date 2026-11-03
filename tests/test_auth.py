@@ -41,3 +41,14 @@ def test_authorize_url_carries_the_redirect_and_code_response_type():
     assert "response_type=code" in url
     # Redirect must be URL-encoded, not raw.
     assert "redirect_uri=https%3A%2F%2Flocalhost%3A8080" in url
+
+
+def test_authorize_url_requests_the_fantasy_read_scope():
+    """Without this, Yahoo issues a token that 403s on every Fantasy call."""
+    url = authorize_url("cid", "oob")
+    assert "scope=fspt-r" in url
+
+
+def test_scope_can_be_overridden_or_omitted():
+    assert "scope=openid" in authorize_url("cid", "oob", "openid")
+    assert "scope=" not in authorize_url("cid", "oob", "")

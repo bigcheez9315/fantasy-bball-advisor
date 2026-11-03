@@ -170,13 +170,27 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             print(f"       {league['league_key']:<20} {league.get('season','?'):<6} "
                   f"{league.get('name','')}")
     except Exception as exc:
-        check(
-            "Live API call",
-            False,
-            str(exc)[:200],
-            fix="If this is a 401, the token is bad: delete .secrets/oauth2.json\n"
-            "and re-run `python -m fantasy auth`.",
-        )
+        detail = str(exc)
+        if "not authorized to perform this action" in detail:
+            # Signature of an app Yahoo hasn't approved for Fantasy access:
+            # OAuth succeeds, tokens issue, and every Fantasy endpoint 403s.
+            fix = (
+                "Yahoo gates the Fantasy API behind an approval program (since\n"
+                "July 2026). OAuth working while every Fantasy endpoint 403s\n"
+                "means the app isn't approved yet - this is not a token problem.\n"
+                "  Apply:   https://sports.yahoo.com/developer/access/\n"
+                "    Client ID:      the one in your .env\n"
+                "    Expected Users: Small (< 1,000 users)\n"
+                "    Notes:          say it's personal, single-league use\n"
+                "  Then sign the API Access and Use Agreement and confirm at\n"
+                "  https://sports.yahoo.com/developer/application-confirmation/"
+            )
+        else:
+            fix = (
+                "If this is a 401, the token is bad: delete .secrets/oauth2.json\n"
+                "and re-run `python -m fantasy auth`."
+            )
+        check("Live API call", False, detail[:160], fix=fix)
         return 1
 
     league_key = env("LEAGUE_KEY")
