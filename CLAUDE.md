@@ -17,9 +17,14 @@ Always use the venv interpreter:
 - `python -m fantasy doctor` diagnoses setup problems and prints fixes.
 - `python -m pytest` — 46 tests, no network or credentials required.
 
-`python -m fantasy auth` is **interactive** (Yahoo prompts for a pasted
-verifier code) and cannot be run from a tool call. Ask the user to run it
-themselves with a `!` prefix.
+`python -m fantasy auth` needs the user in the loop: Yahoo redirects to a dead
+`https://localhost:8080/?code=...`, and that URL has to be copied out of the
+browser. You can still drive it from a tool call — ask the user for the
+redirected URL, then run `python -m fantasy auth --code '<pasted URL>'`. The
+bare command prompts interactively and needs a `!` prefix instead.
+
+Codes are single-use and expire fast. If exchange fails with `invalid_grant`,
+the fix is a fresh authorize URL, not a retry of the same code.
 
 ## Caching
 
