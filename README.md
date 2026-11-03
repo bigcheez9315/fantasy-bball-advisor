@@ -19,9 +19,8 @@ Yahoo account.
 3. Fill in:
    - **Application Name**: anything, e.g. `fantasy-bball-advisor`
    - **Homepage URL**: leave blank
-   - **Redirect URI(s)**: `https://localhost:8080` — nothing has to listen
-     there; you paste the redirected URL back by hand. It just has to match
-     `YAHOO_REDIRECT_URI` in `.env` exactly, port included.
+   - **Redirect URI(s)**: put anything (the form may require a value) — it
+     isn't used. See the note below.
    - **OAuth Client Type**: **Confidential Client**. That's the option that
      issues a Client Secret, which this flow uses. "Public Client" is for
      PKCE apps with no secret and won't work here.
@@ -51,16 +50,24 @@ YAHOO_CLIENT_SECRET=<the Client Secret>
 ./.venv/bin/python -m fantasy auth            # macOS/Linux
 ```
 
-It opens Yahoo's consent page. Approve access, and Yahoo redirects you to
-`https://localhost:8080/?code=...` — **which shows a connection error, and that
-is expected**: nothing is running there. The code is in the address bar. Copy
-the whole URL and paste it at the prompt.
+It opens Yahoo's consent page. Approve access and Yahoo displays a short code
+on screen — paste that at the prompt.
 
 If you'd rather not use an interactive terminal, pass it directly:
 
 ```bash
-python -m fantasy auth --code 'https://localhost:8080/?code=abc123'
+python -m fantasy auth --code 'abc1234'
 ```
+
+**Why `oob` and not a localhost callback:** Yahoo rejects `localhost`,
+`127.0.0.1`, and any host you haven't proven you own, with
+`error_description=invalid+redirect+uri` — at the authorize step, regardless of
+what you typed into the app's Redirect URI field. So the usual
+"spin up a local server on :8080" OAuth pattern is not available here. Yahoo's
+out-of-band mode, where it shows you a code to copy, is the supported path for
+a desktop script, and it's what `YAHOO_REDIRECT_URI=oob` selects. The tool
+accepts either a bare code or a full redirect URL, so if you ever do register a
+real https callback, it keeps working.
 
 The token is cached in `.secrets/` (gitignored) and refreshes itself from then
 on — you shouldn't need to do this again.

@@ -1,11 +1,13 @@
 """Yahoo OAuth2 login.
 
-Yahoo's current app form issues a **Confidential Client** (client id + secret)
-with a real redirect URI, and no longer reliably accepts the old `oob`
-paste-a-code flow. There's nothing listening on the redirect URI, which is
-fine: the browser lands on an error page whose *address bar* contains
-`?code=...`, and that code is all the token exchange needs. So this asks you to
-paste the whole redirected URL -- no local web server, no TLS certificate.
+Yahoo rejects `localhost` and `127.0.0.1` redirect URIs outright (the authorize
+step fails with `invalid redirect uri` no matter what the app has registered),
+so the usual "run a callback server on :8080" OAuth dance is not available for
+a desktop script. The supported path is out-of-band: Yahoo shows the user a
+code to copy. That's the default here.
+
+A real registered https redirect still works if you have one -- `extract_code`
+takes either a bare code or the full redirected URL.
 
 Tokens are written in the exact shape `yahoo_oauth` expects, so the SDK picks
 them up and refreshes them on its own from then on. `callback_uri` is stored
@@ -23,7 +25,7 @@ from .config import OAUTH_FILE, ensure_oauth_file, env, read_json, save_json
 
 AUTH_URL = "https://api.login.yahoo.com/oauth2/request_auth"
 TOKEN_URL = "https://api.login.yahoo.com/oauth2/get_token"
-DEFAULT_REDIRECT = "https://localhost:8080"
+DEFAULT_REDIRECT = "oob"
 
 
 def redirect_uri() -> str:
