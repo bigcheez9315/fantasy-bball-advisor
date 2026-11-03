@@ -105,6 +105,9 @@ def ensure_oauth_file() -> Path:
         existing = {}
     existing["consumer_key"] = client_id
     existing["consumer_secret"] = client_secret
+    # Yahoo demands the same redirect_uri on refresh as on the initial grant,
+    # and yahoo_oauth reads this key straight out of the file.
+    existing["callback_uri"] = env("YAHOO_REDIRECT_URI", "https://localhost:8080")
     save_json(OAUTH_FILE, existing)
     return OAUTH_FILE
 

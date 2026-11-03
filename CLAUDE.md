@@ -15,7 +15,7 @@ Always use the venv interpreter:
 - `python -m fantasy run --json` is the form to parse when reasoning about
   suggestions; the plain form is prettier for the user.
 - `python -m fantasy doctor` diagnoses setup problems and prints fixes.
-- `python -m pytest` — 39 tests, no network or credentials required.
+- `python -m pytest` — 46 tests, no network or credentials required.
 
 `python -m fantasy auth` is **interactive** (Yahoo prompts for a pasted
 verifier code) and cannot be run from a tool call. Ask the user to run it

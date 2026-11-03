@@ -18,13 +18,17 @@ Yahoo account.
 2. Go to <https://developer.yahoo.com/apps/create/>.
 3. Fill in:
    - **Application Name**: anything, e.g. `fantasy-bball-advisor`
-   - **Application Type**: **Installed Application** — this matters. It's what
-     allows the paste-a-code login flow with no web server. Picking "Web
-     Application" will make login fail.
-   - **Redirect URI**: leave blank if the form lets you. If it insists on a
-     value, put `https://localhost:8080` — the code flow we use doesn't call it.
-   - **API Permissions**: tick **Fantasy Sports**, then **Read**
-     (choose Read/Write only if you later want the tool to place claims itself).
+   - **Homepage URL**: leave blank
+   - **Redirect URI(s)**: `https://localhost:8080` — nothing has to listen
+     there; you paste the redirected URL back by hand. It just has to match
+     `YAHOO_REDIRECT_URI` in `.env` exactly, port included.
+   - **OAuth Client Type**: **Confidential Client**. That's the option that
+     issues a Client Secret, which this flow uses. "Public Client" is for
+     PKCE apps with no secret and won't work here.
+   - **API Permissions**: tick **Fantasy Sports - Read**. Leave **OpenID
+     Connect Permissions** and **TW Auction** unchecked — the first is for
+     using Yahoo as a login provider, the second is Yahoo Taiwan's auction
+     API, and neither is needed to read your league.
 4. Create the app. Yahoo shows a **Client ID** and **Client Secret**.
 
 ### 2. Save the credentials
@@ -42,17 +46,24 @@ YAHOO_CLIENT_SECRET=<the Client Secret>
 
 ### 3. Log in
 
-This step is interactive — it opens Yahoo in your browser and waits for you to
-paste back a code, so it has to run in a real terminal:
-
 ```bash
 .venv/Scripts/python.exe -m fantasy auth      # Windows
 ./.venv/bin/python -m fantasy auth            # macOS/Linux
 ```
 
-Approve access, copy the code Yahoo displays, paste it at the
-`Enter verifier :` prompt. The token is cached in `.secrets/` (gitignored) and
-refreshes itself from then on — you shouldn't need to do this again.
+It opens Yahoo's consent page. Approve access, and Yahoo redirects you to
+`https://localhost:8080/?code=...` — **which shows a connection error, and that
+is expected**: nothing is running there. The code is in the address bar. Copy
+the whole URL and paste it at the prompt.
+
+If you'd rather not use an interactive terminal, pass it directly:
+
+```bash
+python -m fantasy auth --code 'https://localhost:8080/?code=abc123'
+```
+
+The token is cached in `.secrets/` (gitignored) and refreshes itself from then
+on — you shouldn't need to do this again.
 
 Then point it at your league:
 
@@ -152,7 +163,7 @@ that's unreachable the report says so instead of quietly benching people.
 ## Development
 
 ```bash
-python -m pytest              # 39 tests, no network or credentials needed
+python -m pytest              # 46 tests, no network or credentials needed
 python -m fantasy probe       # dump raw Yahoo payloads for your league
 ```
 

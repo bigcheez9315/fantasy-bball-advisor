@@ -23,6 +23,7 @@ from .config import (
     read_json,
     save_json,
 )
+from . import auth
 from .statmap import install_stat_map
 
 # yahoo_oauth logs every token check at INFO; quiet it down.
@@ -71,10 +72,19 @@ class FantasyClient:
     def oauth(self) -> OAuth2:
         if self._oauth is None:
             path = ensure_oauth_file()
-            # Triggers the one-time interactive consent if no token is cached.
+            if not auth.have_token():
+                # Don't let yahoo_oauth's own prompt fire here: it hardcodes the
+                # legacy 'oob' redirect, which modern Yahoo apps reject.
+                raise SystemExit(
+                    "Not logged in to Yahoo yet. Run this in a terminal:\n"
+                    "    python -m fantasy auth"
+                )
             self._oauth = OAuth2(None, None, from_file=str(path))
             if not self._oauth.token_is_valid():
-                self._oauth.refresh_access_token()
+                credentials = self._oauth.refresh_access_token()
+                stored = read_json(path, {}) or {}
+                stored.update(credentials)
+                save_json(path, stored)
         return self._oauth
 
     def game(self) -> yfa.Game:

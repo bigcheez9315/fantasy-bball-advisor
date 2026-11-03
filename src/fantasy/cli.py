@@ -64,20 +64,23 @@ def cmd_auth(args: argparse.Namespace) -> int:
     callback server, so the library opens a browser and waits for you to paste
     back the verifier code it shows.
     """
-    if not sys.stdin.isatty():
+    from . import auth as auth_mod
+
+    if not sys.stdin.isatty() and not args.code:
         print(
             "This command needs an interactive terminal (it prompts you to paste\n"
-            "a verifier code from Yahoo). In Claude Code, prefix it with '!':\n"
-            "    ! .venv/Scripts/python.exe -m fantasy auth",
+            "the URL Yahoo redirects you to). In Claude Code, prefix it with '!':\n"
+            "    ! .venv/Scripts/python.exe -m fantasy auth\n"
+            "Or pass what you copied directly:\n"
+            "    python -m fantasy auth --code '<pasted URL or code>'",
             file=sys.stderr,
         )
         return 2
 
-    client = _client(args)
-    print("Opening Yahoo's consent page. Approve access, then paste the code shown.\n")
-    client.oauth  # triggers the handshake and writes .secrets/oauth2.json
+    auth_mod.login(open_browser=not args.no_browser, pasted=args.code)
 
     print("\nToken acquired. Verifying with a live API call...")
+    client = _client(args)
     try:
         leagues = client.my_leagues()
     except Exception as exc:
@@ -407,8 +410,17 @@ def build_parser() -> argparse.ArgumentParser:
         add_analysis_flags(child)
         child.set_defaults(func=handler)
 
+    auth_parser = sub.add_parser("auth", help="run the one-time Yahoo OAuth consent")
+    auth_parser.add_argument(
+        "--code",
+        help="the redirected URL (or bare code) from Yahoo, if you already have it",
+    )
+    auth_parser.add_argument(
+        "--no-browser", action="store_true", help="print the URL instead of opening it"
+    )
+    auth_parser.set_defaults(func=cmd_auth)
+
     for name, handler, help_text in [
-        ("auth", cmd_auth, "run the one-time Yahoo OAuth consent"),
         ("doctor", cmd_doctor, "check setup and report exactly what to fix"),
         ("leagues", cmd_leagues, "list your NBA leagues"),
         ("init", cmd_init, "save league/team keys to .env"),
