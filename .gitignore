@@ -1,10 +1,12 @@
-# Secrets — never commit
+# Secrets - never commit
 .env
 .secrets/
 *.token.json
 tokens.json
 
-# Cached API responses
+# Local scratch. The Yahoo API agreement forbids storing or caching Yahoo
+# Fantasy Information, so nothing from Yahoo is written here - only the
+# public NBA schedule feed.
 .cache/
 
 # Python
@@ -15,5 +17,8 @@ venv/
 *.egg-info/
 .pytest_cache/
 
-# Generated reports are kept (they're the discussion history), but drafts aren't
-reports/*.draft.md
+# Reports contain Yahoo Fantasy Information (rosters, player stats). The API
+# agreement forbids displaying, sharing or distributing that to third parties,
+# and this repo is public - so reports stay local, always.
+reports/*
+!reports/.gitkeep

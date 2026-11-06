@@ -47,6 +47,7 @@ class FantasyClient:
     use_cache: bool = True
     ttl_overrides: dict[str, int] = field(default_factory=dict)
     api_calls: int = 0
+    _memo: dict[str, Any] = field(default_factory=dict, repr=False)
     _oauth: OAuth2 | None = field(default=None, repr=False)
     _league: Any = field(default=None, repr=False)
 
@@ -56,16 +57,23 @@ class FantasyClient:
         return self.ttl_overrides.get(kind, DEFAULT_TTL.get(kind, 1800))
 
     def _cached(self, kind: str, key: str, fetch: Callable[[], Any]) -> Any:
-        """Memoize a fetch on disk, keyed by kind + a stable key string."""
-        digest = hashlib.sha256(f"{kind}:{key}".encode()).hexdigest()[:20]
-        path = CACHE_DIR / f"{kind}-{digest}.json"
-        if self.use_cache:
-            cached = read_json(path)
-            if isinstance(cached, dict) and time.time() - cached.get("_at", 0) < self._ttl(kind):
-                return cached["body"]
+        """Memoize a fetch for the lifetime of this process only.
+
+        Deliberately in-memory: the Yahoo API Access and Use Agreement says
+        "Developer shall not store, cache or index the Yahoo Fantasy
+        Information", so nothing from Yahoo is written to disk. This keeps a
+        single run from re-requesting the same resource (analysis.run touches
+        settings and rosters repeatedly) without persisting anything.
+
+        The practical cost is that every run refetches. Keep `candidate_limit`
+        sane rather than reaching for a disk cache.
+        """
+        memo_key = f"{kind}:{key}"
+        if self.use_cache and memo_key in self._memo:
+            return self._memo[memo_key]
         body = fetch()
         self.api_calls += 1
-        save_json(path, {"_at": time.time(), "key": key, "body": body})
+        self._memo[memo_key] = body
         return body
 
     @property
@@ -208,23 +216,15 @@ class FantasyClient:
             raise ValueError(f"unknown window {window!r}; expected {list(WINDOWS)}")
 
         wanted = [int(p) for p in dict.fromkeys(player_ids)]
-        league_key = self.league_key or ""
         out: dict[int, dict] = {}
         missing: list[int] = []
 
+        # In-memory only, per the agreement's no-caching clause. Still worth
+        # doing: a run asks for overlapping player sets across windows.
         for pid in wanted:
-            cached = None
-            if self.use_cache:
-                digest = hashlib.sha256(
-                    f"stats:{league_key}:{window}:{pid}".encode()
-                ).hexdigest()[:20]
-                path = CACHE_DIR / f"stats-{digest}.json"
-                cached = read_json(path)
-            if (
-                isinstance(cached, dict)
-                and time.time() - cached.get("_at", 0) < self._ttl("stats")
-            ):
-                out[pid] = cached["body"]
+            memo_key = f"stats:{window}:{pid}"
+            if self.use_cache and memo_key in self._memo:
+                out[pid] = self._memo[memo_key]
             else:
                 missing.append(pid)
 
@@ -236,10 +236,7 @@ class FantasyClient:
             for pid in missing:
                 row = by_id.get(pid, {})
                 out[pid] = row
-                digest = hashlib.sha256(
-                    f"stats:{league_key}:{window}:{pid}".encode()
-                ).hexdigest()[:20]
-                save_json(CACHE_DIR / f"stats-{digest}.json", {"_at": time.time(), "body": row})
+                self._memo[f"stats:{window}:{pid}"] = row
 
         return out
 

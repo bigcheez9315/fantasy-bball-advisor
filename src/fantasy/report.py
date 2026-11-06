@@ -15,6 +15,11 @@ from .waivers import Swap, format_delta_line
 
 console = Console()
 
+# Required by the Yahoo API Access and Use Agreement: clear attribution
+# wherever Yahoo Fantasy Information is displayed.
+ATTRIBUTION = "Fantasy data provided by Yahoo Fantasy"
+ATTRIBUTION_URL = "https://sports.yahoo.com/fantasy/"
+
 
 def _value_color(value: float) -> str:
     if value >= 1.0:
@@ -262,9 +267,9 @@ def print_footer(analysis: Analysis) -> None:
         for note in analysis.notes:
             console.print(f"[dim]note: {note}[/dim]")
     console.print(
-        f"\n[dim]{analysis.api_calls} uncached Yahoo call(s) this run. "
-        "Re-runs within the cache window are free; pass --fresh to bypass.[/dim]"
+        f"\n[dim]{analysis.api_calls} Yahoo API call(s) this run.[/dim]"
     )
+    console.print(f"[dim]{ATTRIBUTION} - {ATTRIBUTION_URL}[/dim]")
 
 
 def print_full(analysis: Analysis) -> None:
@@ -302,6 +307,7 @@ def to_dict(analysis: Analysis) -> dict:
         }
 
     return {
+        "attribution": {"text": ATTRIBUTION, "url": ATTRIBUTION_URL},
         "league": {
             "key": analysis.league_key,
             "name": analysis.league_name,
@@ -453,6 +459,10 @@ def to_markdown(analysis: Analysis) -> str:
         "## Discussion",
         "",
         "_Notes on what you actually did and why._",
+        "",
+        "---",
+        "",
+        f"[{ATTRIBUTION}]({ATTRIBUTION_URL})",
         "",
     ]
     return "\n".join(lines)

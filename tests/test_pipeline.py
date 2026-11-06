@@ -258,3 +258,27 @@ def test_empty_wire_is_handled(monkeypatch):
     assert result.waivers.swaps == []
     assert result.lineup is not None  # lineup advice still works
     report_mod.to_markdown(result)  # must not raise
+
+
+def test_outputs_carry_yahoo_attribution(result, capsys):
+    """Required by the Yahoo API agreement wherever the data is displayed."""
+    report_mod.print_full(result)
+    assert "Fantasy data provided by Yahoo Fantasy" in capsys.readouterr().out
+    assert report_mod.to_dict(result)["attribution"]["text"] == (
+        "Fantasy data provided by Yahoo Fantasy"
+    )
+    assert "Fantasy data provided by Yahoo Fantasy" in report_mod.to_markdown(result)
+
+
+def test_client_never_writes_yahoo_data_to_disk(tmp_path, monkeypatch):
+    """The agreement forbids storing or caching Yahoo Fantasy Information."""
+    from fantasy import client as client_mod
+
+    monkeypatch.setattr(client_mod, "CACHE_DIR", tmp_path)
+    c = client_mod.FantasyClient(league_key="466.l.1")
+    calls = []
+    c._cached("roster", "k", lambda: calls.append(1) or {"player": "data"})
+    c._cached("roster", "k", lambda: calls.append(1) or {"player": "data"})
+
+    assert len(calls) == 1, "should memoize within the process"
+    assert list(tmp_path.iterdir()) == [], "nothing may be written to disk"
