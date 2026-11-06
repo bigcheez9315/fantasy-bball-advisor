@@ -223,6 +223,60 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def cmd_watch(args: argparse.Namespace) -> int:
+    """Poll until Yahoo turns on Fantasy access for this app, then stop.
+
+    Yahoo enables API access per Client ID some time after you finish the
+    approval steps, with no notification and no published SLA. Rather than
+    re-running `auth` by hand, this re-tests on an interval using the cached
+    refresh token -- no further consent needed, because the 403 is an
+    app-level check independent of your user grant.
+    """
+    import time
+
+    import requests
+
+    probe = "https://fantasysports.yahooapis.com/fantasy/v2/game/nba?format=json"
+    deadline = time.time() + args.for_minutes * 60
+    attempt = 0
+
+    print(
+        f"Polling every {args.every} min for up to {args.for_minutes} min "
+        f"(Ctrl-C to stop)."
+    )
+    while time.time() < deadline:
+        attempt += 1
+        stamp = time.strftime("%H:%M:%S")
+        try:
+            client = FantasyClient(use_cache=False)
+            token = client.oauth.access_token  # refreshes if expired
+            response = requests.get(
+                probe,
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+                timeout=30,
+            )
+            status = response.status_code
+        except SystemExit as exc:
+            print(f"{stamp} #{attempt}: {exc}")
+            return 2
+        except Exception as exc:
+            print(f"{stamp} #{attempt}: error {type(exc).__name__}")
+            status = None
+
+        if status == 200:
+            print(f"{stamp} #{attempt}: HTTP 200 - access is LIVE")
+            print("\nRun `python -m fantasy init` then `python -m fantasy run`.")
+            return 0
+        print(f"{stamp} #{attempt}: HTTP {status} - not yet")
+        if time.time() + args.every * 60 < deadline:
+            time.sleep(args.every * 60)
+        else:
+            break
+
+    print("\nStill not enabled. This is Yahoo's switch, not a config problem.")
+    return 1
+
+
 def cmd_leagues(args: argparse.Namespace) -> int:
     for league in _client(args).my_leagues():
         if league.get("error"):
@@ -433,6 +487,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-browser", action="store_true", help="print the URL instead of opening it"
     )
     auth_parser.set_defaults(func=cmd_auth)
+
+    watch_parser = sub.add_parser(
+        "watch", help="poll until Yahoo enables Fantasy access for this app"
+    )
+    watch_parser.add_argument(
+        "--every", type=int, default=15, help="minutes between checks (default 15)"
+    )
+    watch_parser.add_argument(
+        "--for-minutes", type=int, default=720, help="give up after N minutes (default 720)"
+    )
+    watch_parser.set_defaults(func=cmd_watch)
 
     for name, handler, help_text in [
         ("doctor", cmd_doctor, "check setup and report exactly what to fix"),
