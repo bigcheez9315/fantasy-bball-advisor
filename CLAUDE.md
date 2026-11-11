@@ -72,3 +72,20 @@ the user hunting through their Yahoo app settings for it.
 
 Also note: Yahoo rejects `localhost` redirect URIs at the authorize step, so
 `YAHOO_REDIRECT_URI=oob` is the only workable value for a desktop script.
+
+### What the 403 wait actually looks like (researched 2026-11-11)
+
+From yfpy issue #84, where several people hit this exact state post-approval:
+
+- One documented case waited **7 days** between submitting the new app's
+  Client ID on the confirmation form and the API returning 200s. Another was
+  immediate. Expect anywhere in that range.
+- Yahoo's "your Fantasy API access is live" emails **fire before enablement
+  is real**. Don't trust them; probe with an actual API call.
+- Nothing technical helps: explicit `scope=fspt-r`, revoke-and-reauth, a
+  different host, base URL, User-Agent, or game key were all tried and none
+  changed the 403. Editing a pre-existing app is confirmed impossible — the
+  app must be created *after* the account is enabled.
+- The only escalation is replying on the approval/DocuSign email thread with
+  name, account email, Client ID, App ID, and the literal 403 string, framed
+  as a binding request.
