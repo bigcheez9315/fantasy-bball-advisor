@@ -7,8 +7,17 @@ from typing import Any, Iterable
 from .config import canonical_cat
 from .statmap import RATIO_FIELDS
 
-WINDOW_ORDER = ["last7", "last30", "season"]
-WINDOW_LABELS = {"last7": "L7", "last30": "L30", "season": "Season"}
+WINDOW_ORDER = ["last7", "last14", "last30", "season"]
+WINDOW_LABELS = {"last7": "L7", "last14": "L14", "last30": "L30", "season": "Season"}
+
+# Role adjustment: each window's per-game production is rescaled to the
+# player's *current* minutes. Per-minute production is stable; minutes are
+# what change with a role. Clamped so a garbage-time blip can't triple a line.
+ROLE_SCALE_MIN, ROLE_SCALE_MAX = 0.6, 1.5
+# Games needed before a window's minutes define "current role".
+ROLE_MIN_GAMES = {"last14": 3.0, "last7": 2.0}
+# Never rescale minutes or the reported rate stats themselves.
+UNSCALED = {"MIN", "FG%", "FT%", "3PT%", "GP", "GS"}
 
 # Statuses that mean "not going to play for a while".
 OUT_STATUSES = {"O", "INJ", "IR", "IL", "NA", "SUSP"}
@@ -27,6 +36,11 @@ class Window:
     def usable(self) -> bool:
         return self.games > 0 and bool(self.per_game)
 
+    @property
+    def mpg(self) -> float:
+        """Raw minutes per game (never role-adjusted)."""
+        return self.totals.get("MIN", 0.0) / self.games if self.games > 0 else 0.0
+
 
 @dataclass
 class Player:
@@ -39,6 +53,9 @@ class Player:
     source: str = "pool"  # roster | waivers | fa | taken
     selected_position: str | None = None
     windows: dict[str, Window] = field(default_factory=dict)
+    # Never suggested as a drop: high-ownership (the crowd's read on upside a
+    # box score can't see, e.g. a #1-pick rookie) or named in PROTECTED_PLAYERS.
+    protected: bool = False
 
     # Filled in by valuation.
     z: dict[str, dict[str, float]] = field(default_factory=dict)
@@ -71,7 +88,7 @@ class Player:
         window = self.window(name)
         if not window.usable:
             return 0.0
-        span_days = {"last7": 7, "last30": 30, "season": 30}.get(name, 30)
+        span_days = {"last7": 7, "last14": 14, "last30": 30, "season": 30}.get(name, 30)
         return window.games * 7.0 / span_days
 
     def label(self) -> str:
@@ -162,6 +179,40 @@ def attach_stats(
             player = players.get(int(pid))
             if player is not None:
                 player.windows[window_name] = parse_window(raw, cats)
+    for player in players.values():
+        role_adjust(player)
+
+
+def current_minutes(player: Player) -> float | None:
+    """Minutes per game in the player's current role: L14, else L7."""
+    for window, min_games in ROLE_MIN_GAMES.items():
+        w = player.window(window)
+        if w.usable and w.games >= min_games and w.mpg > 0:
+            return w.mpg
+    return None
+
+
+def role_adjust(player: Player) -> None:
+    """Rescale every window's per-game production to current minutes.
+
+    A bench guy who just moved into the starting five has a season line built
+    on 18 minutes; at 32 minutes his per-minute production says far more.
+    Shooting *efficiency* is untouched (makes and attempts scale together), so
+    percentage categories only gain volume.
+    """
+    now = current_minutes(player)
+    if not now:
+        return
+    for window in player.windows.values():
+        if not window.usable or window.mpg <= 0:
+            continue
+        scale = max(ROLE_SCALE_MIN, min(ROLE_SCALE_MAX, now / window.mpg))
+        if abs(scale - 1.0) < 1e-9:
+            continue
+        window.per_game = {
+            stat: value if stat in UNSCALED else value * scale
+            for stat, value in window.per_game.items()
+        }
 
 
 def dedupe(*groups: Iterable[Player]) -> dict[int, Player]:

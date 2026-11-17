@@ -172,8 +172,8 @@ def parse_transactions(payload: dict, team_key: str, since: dt.date) -> list[Mov
 
 
 def rates(player: Player) -> dict[str, float]:
-    """Per-game rates to project with: L30 when it's a real sample, else season."""
-    for window, min_games in (("last30", 5), ("season", 3), ("last7", 1)):
+    """Per-game rates to project with (role-adjusted): L14 when it's a real sample."""
+    for window, min_games in (("last14", 3), ("last30", 5), ("season", 3), ("last7", 1)):
         w = player.window(window)
         if w.usable and w.games >= min_games:
             return w.per_game
@@ -333,7 +333,7 @@ def evaluate_moves(
     base_p = {r.cat: r.p_win for r in base}
     base_wins = expected_wins(base)
     moves: list[WeekMove] = []
-    droppable = [p for p in my_players]
+    droppable = [p for p in my_players if not p.protected]
     for add in candidates:
         if add.is_out or not rates(add):
             continue
@@ -378,12 +378,16 @@ def evaluate_moves(
 KEEPER_SAFE_SEASON_DELTA = -0.5
 
 
-def best_per_add(moves: list[WeekMove], top: int = 6, keeper_safe: bool = False) -> list[WeekMove]:
-    """One line per add (its best drop), optionally only keeper-safe swaps."""
+def best_per_add(
+    moves: list[WeekMove], top: int = 6, keeper_safe: bool | None = None
+) -> list[WeekMove]:
+    """One line per add (its best drop). keeper_safe=True keeps only swaps that
+    don't cost long-term value; False keeps only the ones that do."""
     seen: set[int] = set()
     out: list[WeekMove] = []
     for move in moves:
-        if keeper_safe and move.season_delta < KEEPER_SAFE_SEASON_DELTA:
+        safe = move.season_delta >= KEEPER_SAFE_SEASON_DELTA
+        if keeper_safe is not None and safe != keeper_safe:
             continue
         if move.add.pid in seen:
             continue

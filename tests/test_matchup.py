@@ -138,4 +138,5 @@ def test_keeper_safe_filter_skips_costly_drops():
     costly = WeekMove(a, b, delta_wins=0.4, season_delta=-3.0, effective=day, swings={})
     safe = WeekMove(a, b, delta_wins=0.3, season_delta=+1.0, effective=day, swings={})
     assert best_per_add([costly, safe], keeper_safe=True) == [safe]
+    assert best_per_add([costly, safe], keeper_safe=False) == [costly]
     assert best_per_add([costly, safe]) == [costly]

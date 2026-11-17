@@ -167,3 +167,20 @@ def test_one_game_window_does_not_carry_full_weight():
     assert slumper.blended_value > 0.5
     # And a 1-game L7 doesn't define the trend.
     assert slumper.trend == pytest.approx(0.0)
+
+
+def test_role_adjust_scales_older_windows_to_current_minutes():
+    from fantasy.players import role_adjust
+
+    p = Player(pid=1, name="new starter")
+    # Season: 18 mpg, 8 ppg. Last 14 days: 30 mpg.
+    p.windows["season"] = Window(games=10, per_game={"PTS": 8.0, "FGM": 3.0, "FGA": 6.0, "MIN": 18.0},
+                                 totals={"MIN": 180.0})
+    p.windows["last14"] = Window(games=5, per_game={"PTS": 14.0, "FGM": 5.0, "FGA": 10.0, "MIN": 30.0},
+                                 totals={"MIN": 150.0})
+    role_adjust(p)
+    season = p.windows["season"].per_game
+    assert season["PTS"] == pytest.approx(8.0 * 1.5)  # 30/18 = 1.67, capped at 1.5
+    assert season["FGM"] / season["FGA"] == pytest.approx(0.5)  # efficiency untouched
+    assert season["MIN"] == 18.0  # minutes themselves never rescaled
+    assert p.windows["last14"].per_game["PTS"] == 14.0

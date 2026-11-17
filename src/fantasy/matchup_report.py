@@ -65,7 +65,7 @@ def print_matchup(report: MatchupReport) -> None:
             f"{p.name} ({p.team}, {report.games_left(p.team)}g)" for p in report.opp_streamers
         ))
 
-    opp = Table(title=f"Opponent roster: {m.opp.name} (per game, L30 or season)")
+    opp = Table(title=f"Opponent roster: {m.opp.name} (per game, recent role)")
     for col in ("Player", "Team", "St", "Value", "G left", "PTS", "REB", "AST", "3PM",
                 "ST", "BLK", "TO", "FG%", "FT%"):
         opp.add_column(col, justify="left" if col in ("Player", "Team", "St") else "right")
@@ -100,7 +100,7 @@ def print_matchup(report: MatchupReport) -> None:
             ("Keeper-safe (you don't give up long-term value)",
              best_per_add(report.best_moves, keeper_safe=True)),
             ("Pure streams (best for this week, costs long-term value)",
-             best_per_add(report.best_moves)),
+             best_per_add(report.best_moves, keeper_safe=False)),
         )
         for title, moves in sections:
             console.print(f"\n[bold]{title}[/bold]")

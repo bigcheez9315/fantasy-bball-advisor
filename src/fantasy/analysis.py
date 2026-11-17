@@ -13,7 +13,7 @@ from . import lineup as lineup_mod
 from . import schedule as schedule_mod
 from . import waivers as waivers_mod
 from .client import FantasyClient
-from .config import WindowWeights, canonical_cat
+from .config import WindowWeights, canonical_cat, protect_owned_pct, protected_names
 from .players import WINDOW_ORDER, Player, attach_stats, parse_row
 from .valuation import (
     PoolModel,
@@ -97,6 +97,15 @@ def run(
 
     taken_rows = client.taken_players()
     roster_ids = {p.pid for p in my_players}
+
+    # Roster rows carry no ownership %; the league-wide taken list does.
+    owned = {int(r["player_id"]): float(r.get("percent_owned") or 0) for r in taken_rows}
+    floor, names = protect_owned_pct(), protected_names()
+    for player in my_players:
+        player.pct_owned = owned.get(player.pid, player.pct_owned)
+        player.protected = (
+            player.pct_owned >= floor or player.name.casefold() in names
+        )
     pool_players = [
         parse_row(r, "taken") for r in taken_rows if int(r["player_id"]) not in roster_ids
     ]

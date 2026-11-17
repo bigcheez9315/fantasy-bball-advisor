@@ -62,7 +62,8 @@ def print_header(analysis: Analysis) -> None:
         f"Categories: {', '.join(analysis.cats)}",
         f"Lineup slots: {', '.join(analysis.slots)}",
         f"Valuation pool: {analysis.pool_size} rostered players   "
-        f"Window weights: L7 {weights['last7']:.0%} / L30 {weights['last30']:.0%} / "
+        f"Window weights: L7 {weights['last7']:.0%} / L14 {weights['last14']:.0%} / "
+        f"L30 {weights['last30']:.0%} / "
         f"Season {weights['season']:.0%}",
     ]
     if analysis.mode == "needs":
@@ -383,12 +384,14 @@ def to_markdown(analysis: Analysis) -> str:
         lines.append(
             f"- {swap.add.name}: `{swap.add.blended_value:+.2f}` z "
             f"(L7 {swap.add.value.get('last7', float('nan')):+.2f}, "
+            f"L14 {swap.add.value.get('last14', float('nan')):+.2f}, "
             f"L30 {swap.add.value.get('last30', float('nan')):+.2f}, "
             f"season {swap.add.value.get('season', float('nan')):+.2f})"
         )
         lines.append(
             f"- {swap.drop.name}: `{swap.drop.blended_value:+.2f}` z "
             f"(L7 {swap.drop.value.get('last7', float('nan')):+.2f}, "
+            f"L14 {swap.drop.value.get('last14', float('nan')):+.2f}, "
             f"L30 {swap.drop.value.get('last30', float('nan')):+.2f}, "
             f"season {swap.drop.value.get('season', float('nan')):+.2f})"
         )
@@ -410,7 +413,7 @@ def to_markdown(analysis: Analysis) -> str:
             )
         lines.append("")
 
-    lines += ["## Roster", "", "| Player | Team | Pos | St | L7 | L30 | Season | Blend | Trend |",
+    lines += ["## Roster", "", "| Player | Team | Pos | St | L7 | L14 | L30 | Season | Blend | Trend |",
               "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for player in analysis.my_sorted():
         cells = [

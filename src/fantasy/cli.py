@@ -461,7 +461,7 @@ def build_parser() -> argparse.ArgumentParser:
         )
         target.add_argument(
             "--weights",
-            help="window weights 'last7,last30,season' (default 0.4,0.4,0.2)",
+            help="window weights 'last7,last14,last30,season' (default 0.25,0.4,0.2,0.15)",
         )
         target.add_argument(
             "--candidates",

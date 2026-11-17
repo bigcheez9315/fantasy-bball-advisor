@@ -89,7 +89,14 @@ def parse_players_stats(payload: dict) -> list[dict]:
 logging.getLogger("yahoo_oauth").setLevel(logging.WARNING)
 
 # Our window names -> the SDK's req_type values.
-WINDOWS = {"last7": "lastweek", "last30": "lastmonth", "season": "season"}
+# "biweekly" is undocumented but verified (2026-11-17) to equal the sum of the
+# last 14 days' daily stat lines.
+WINDOWS = {
+    "last7": "lastweek",
+    "last14": "biweekly",
+    "last30": "lastmonth",
+    "season": "season",
+}
 
 DEFAULT_TTL = {
     "settings": 86400,   # league rules barely change

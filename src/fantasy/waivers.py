@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from .config import NEGATIVE_CATS
 from .lineup import fillable_slots
-from .players import Player
+from .players import Player, current_minutes
 from .schedule import Schedule
 from .valuation import category_deltas
 
@@ -64,25 +64,24 @@ def _sample_note(player: Player) -> str | None:
 def _describe(player: Player, schedule: Schedule, today: dt.date) -> list[str]:
     """Context lines that explain where a player's value comes from."""
     reasons: list[str] = []
-    last7, last30 = player.window("last7"), player.window("last30")
-
     if player.trend > 0.75:
-        reasons.append(f"trending up (+{player.trend:.2f} z vs season baseline)")
+        reasons.append(f"trending up (+{player.trend:.2f} z, last 2 weeks vs season)")
     elif player.trend < -0.75:
-        reasons.append(f"trending down ({player.trend:.2f} z vs season baseline)")
+        reasons.append(f"trending down ({player.trend:.2f} z, last 2 weeks vs season)")
 
-    if last30.usable and last30.per_game.get("MIN"):
-        minutes = last30.per_game["MIN"]
-        recent_minutes = last7.per_game.get("MIN") if last7.usable else None
-        if recent_minutes and recent_minutes - minutes >= 4:
+    season = player.window("season")
+    recent_minutes = current_minutes(player)
+    if season.usable and season.mpg and recent_minutes:
+        minutes = season.mpg
+        if recent_minutes - minutes >= 4:
             reasons.append(
                 f"minutes up {recent_minutes - minutes:+.1f} ({minutes:.1f} -> "
-                f"{recent_minutes:.1f}) - role may be changing"
+                f"{recent_minutes:.1f}) - bigger role, value scaled up"
             )
-        elif recent_minutes and minutes - recent_minutes >= 4:
+        elif minutes - recent_minutes >= 4:
             reasons.append(
                 f"minutes down {recent_minutes - minutes:+.1f} ({minutes:.1f} -> "
-                f"{recent_minutes:.1f})"
+                f"{recent_minutes:.1f}) - smaller role, value scaled down"
             )
 
     if schedule.available and player.team:
@@ -130,7 +129,9 @@ def recommend(
         if p.is_out and p.value.get("season", 0.0) > report.replacement_level
     ][:5]
 
-    droppable = sorted(my_players, key=lambda p: p.blended_value)
+    droppable = sorted(
+        (p for p in my_players if not p.protected), key=lambda p: p.blended_value
+    )
     roster_ids = {p.pid for p in my_players}
 
     seen_adds: set[int] = set()

@@ -56,6 +56,23 @@ def env(key: str, default: str | None = None) -> str | None:
     return os.environ.get(key) or default
 
 
+DEFAULT_PROTECT_OWNED_PCT = 85.0
+
+
+def protect_owned_pct() -> float:
+    """Players rostered in at least this % of Yahoo leagues are never drops."""
+    try:
+        return float(env("PROTECT_OWNED_PCT") or DEFAULT_PROTECT_OWNED_PCT)
+    except ValueError:
+        return DEFAULT_PROTECT_OWNED_PCT
+
+
+def protected_names() -> set[str]:
+    """PROTECTED_PLAYERS in .env: comma-separated names you'll never drop."""
+    raw = env("PROTECTED_PLAYERS") or ""
+    return {name.strip().casefold() for name in raw.split(",") if name.strip()}
+
+
 def require_env(key: str, hint: str = "") -> str:
     value = env(key)
     if not value:
@@ -120,28 +137,33 @@ class WindowWeights:
     over the last week or two matters far more than an October baseline.
     """
 
-    last7: float = 0.40
-    last30: float = 0.40
-    season: float = 0.20
+    # The last two weeks carry 65%: L14 is the anchor (big enough to trust,
+    # recent enough to reflect the current role), L7 catches what's breaking.
+    last7: float = 0.25
+    last14: float = 0.40
+    last30: float = 0.20
+    season: float = 0.15
 
     def normalized(self) -> dict[str, float]:
-        total = self.last7 + self.last30 + self.season
+        raw = {
+            "last7": self.last7,
+            "last14": self.last14,
+            "last30": self.last30,
+            "season": self.season,
+        }
+        total = sum(raw.values())
         if total <= 0:
             raise ValueError("window weights must sum to > 0")
-        return {
-            "last7": self.last7 / total,
-            "last30": self.last30 / total,
-            "season": self.season / total,
-        }
+        return {window: weight / total for window, weight in raw.items()}
 
     @classmethod
     def parse(cls, spec: str | None) -> "WindowWeights":
-        """Parse '0.4,0.4,0.2' (last7,last30,season) from the CLI."""
+        """Parse '0.25,0.4,0.2,0.15' (last7,last14,last30,season) from the CLI."""
         if not spec:
             return cls()
         parts = [float(p) for p in spec.replace(" ", "").split(",")]
-        if len(parts) != 3:
-            raise SystemExit("--weights needs three numbers: last7,last30,season")
+        if len(parts) != 4:
+            raise SystemExit("--weights needs four numbers: last7,last14,last30,season")
         return cls(*parts)
 
 

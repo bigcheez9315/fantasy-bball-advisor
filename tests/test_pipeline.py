@@ -93,9 +93,9 @@ class FakeClient:
 
     def stats(self, player_ids, window: str) -> dict[int, dict]:
         """Yahoo-shaped totals: counting stats plus GP and made/attempt composites."""
-        games = {"last7": 3, "last30": 12, "season": 20}[window]
+        games = {"last7": 3, "last14": 6, "last30": 12, "season": 20}[window]
         # Recent windows wobble around the player's true skill.
-        noise = {"last7": 0.9, "last30": 0.35, "season": 0.0}[window]
+        noise = {"last7": 0.9, "last14": 0.6, "last30": 0.35, "season": 0.0}[window]
         out = {}
         for pid in player_ids:
             pid = int(pid)
@@ -148,7 +148,7 @@ def test_pipeline_produces_a_valued_roster(result):
     scored = [p for p in result.my_players if p.blended_value]
     assert len(scored) == 13
     for player in scored:
-        assert set(player.value) == {"last7", "last30", "season"}
+        assert set(player.value) == {"last7", "last14", "last30", "season"}
         # All nine categories valued, percentages included.
         assert set(player.blended_z) == set(CATS)
 
@@ -211,7 +211,7 @@ def test_custom_window_weights_shift_valuations(monkeypatch):
     monkeypatch.setattr(analysis_mod.schedule_mod, "load", lambda **kw: schedule)
 
     season_only = analysis_mod.run(
-        FakeClient(), date=TODAY, weights=WindowWeights(0, 0, 1), candidate_limit=20
+        FakeClient(), date=TODAY, weights=WindowWeights(0, 0, 0, 1), candidate_limit=20
     )
     for player in season_only.my_players:
         if player.value.get("season") is not None:
@@ -282,3 +282,15 @@ def test_client_never_writes_yahoo_data_to_disk(tmp_path, monkeypatch):
 
     assert len(calls) == 1, "should memoize within the process"
     assert list(tmp_path.iterdir()) == [], "nothing may be written to disk"
+
+
+def test_high_ownership_players_are_never_suggested_drops(monkeypatch):
+    schedule = Schedule(by_date={(TODAY + dt.timedelta(days=d)).isoformat(): set(TEAMS) for d in range(14)})
+    monkeypatch.setattr(analysis_mod.schedule_mod, "load", lambda **kw: schedule)
+    client = FakeClient()
+    # Make the roster's worst players look like coveted rookies.
+    for p in client._roster:
+        p["percent_owned"] = 95.0
+    result = analysis_mod.run(client, date=TODAY, candidate_limit=40)
+    assert all(p.protected for p in result.my_players)
+    assert not result.waivers.swaps
