@@ -144,23 +144,41 @@ def optimize(
 
 @dataclass
 class Fit:
-    """How many of a player's games he'd actually start on a given roster."""
+    """What a player adds to a given roster, day by day.
+
+    `starts` counts games he'd be in the lineup; `added_days` are the ones
+    where that's a start you otherwise wouldn't have had (an open slot).
+    On the rest he only replaces someone, so the gain is the gap between
+    them, not a whole extra game.
+    """
 
     starts: int = 0
     games: int = 0
     benched_days: list[dt.date] = field(default_factory=list)
+    added_days: list[dt.date] = field(default_factory=list)
+    displaced: dict[dt.date, str] = field(default_factory=dict)
+
+    @property
+    def added(self) -> int:
+        return len(self.added_days)
 
     @property
     def ratio(self) -> float:
-        return self.starts / self.games if self.games else 0.0
+        """Share of his games that add a start: the real schedule fit."""
+        return self.added / self.games if self.games else 0.0
 
     def describe(self) -> str:
         if not self.games:
             return "no games in the window"
-        text = f"would start {self.starts} of his {self.games} games"
+        text = f"adds a start in {self.added} of his {self.games} games"
+        if self.added_days:
+            text += " (" + ", ".join(f"{d:%a}" for d in self.added_days) + ")"
+        if self.displaced:
+            swaps = ", ".join(f"{d:%a} over {name}" for d, name in self.displaced.items())
+            text += f"; otherwise just replaces someone: {swaps}"
         if self.benched_days:
             days = ", ".join(f"{d:%a}" for d in self.benched_days)
-            text += f" (benched {days}: your lineup/position is already full)"
+            text += f"; benched {days} (lineup/position full)"
         return text
 
 
@@ -171,23 +189,32 @@ def lineup_fit(
     schedule: Schedule,
     days: list[dt.date],
 ) -> Fit:
-    """Day-by-day: does this player crack the optimized lineup on `roster`?
+    """Day-by-day: does this player add a start on `roster`, or just bump
+    someone who'd have started anyway?
 
-    This is the real value of a pickup. Games on days your slots for his
-    positions are already full of better players are worth nothing.
+    Games on days your slots for his positions are already full are worth only
+    the upgrade over whoever he replaces, which is often nothing.
     """
     fit = Fit()
     if not schedule.available:
         return fit
+    without = [p for p in roster if p.pid != player.pid]
     for day in days:
         if not schedule.plays_on(player.team, day) or player.is_out:
             continue
         fit.games += 1
         plan = optimize(roster, slots, date=day, schedule=schedule)
-        if player.pid in plan.starter_ids():
-            fit.starts += 1
-        else:
+        if player.pid not in plan.starter_ids():
             fit.benched_days.append(day)
+            continue
+        fit.starts += 1
+        base = optimize(without, slots, date=day, schedule=schedule)
+        if len(plan.starters) > len(base.starters):
+            fit.added_days.append(day)
+        else:
+            bumped = base.starter_ids() - plan.starter_ids()
+            names = [p.name for _, p in base.starters if p.pid in bumped]
+            fit.displaced[day] = names[0] if names else "someone"
     return fit
 
 

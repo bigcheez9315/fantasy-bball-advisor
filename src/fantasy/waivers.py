@@ -175,8 +175,8 @@ def recommend(
             best.reasons.append(best.fit.describe())
         if best.fit.games and best.fit.ratio < 0.6:
             best.warnings.append(
-                f"poor schedule/position fit: {add.name} would start only "
-                f"{best.fit.starts} of {best.fit.games} games in the next 7 days"
+                f"poor schedule/position fit: {add.name} adds a start in only "
+                f"{best.fit.added} of {best.fit.games} games in the next 7 days"
             )
         note = _sample_note(add)
         if note:

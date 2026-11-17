@@ -34,3 +34,17 @@ def test_fit_counts_only_games_he_would_start():
     fit = lineup_fit(pickup, [starter, pickup], ["C"], schedule, [MON, tue])
     assert (fit.starts, fit.games) == (1, 2)
     assert fit.benched_days == [MON]
+    assert fit.added_days == [tue]
+
+
+def test_fit_bumping_a_worse_player_is_not_an_added_start():
+    # Full lineup on Monday: the pickup starts, but only by benching the weak
+    # center, so it adds no game. Tuesday the slot is open, a real extra start.
+    weak = _p(1, "weak", ["C"], "AAA", -1.0)
+    pickup = _p(2, "pickup", ["C"], "BBB", 0.5)
+    tue = MON + dt.timedelta(days=1)
+    schedule = Schedule(by_date={MON.isoformat(): {"AAA", "BBB"}, tue.isoformat(): {"BBB"}})
+    fit = lineup_fit(pickup, [weak, pickup], ["C"], schedule, [MON, tue])
+    assert (fit.starts, fit.added, fit.games) == (2, 1, 2)
+    assert fit.displaced == {MON: "weak"}
+    assert fit.ratio == 0.5
