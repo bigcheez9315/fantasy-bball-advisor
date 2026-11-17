@@ -6,6 +6,7 @@
     python -m fantasy run             # the full report
     python -m fantasy waivers         # just add/drop
     python -m fantasy lineup          # just start/sit
+    python -m fantasy matchup         # this week vs your opponent
     python -m fantasy probe           # verify stat parsing against your league
 """
 from __future__ import annotations
@@ -343,6 +344,27 @@ def cmd_waivers(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_matchup(args: argparse.Namespace) -> int:
+    from . import matchup as matchup_mod
+    from .matchup_report import print_matchup
+
+    client = _client(args)
+    result = analysis_mod.run(
+        client,
+        date=_parse_date(getattr(args, "date", None)),
+        mode=args.mode,
+        weights=WindowWeights.parse(args.weights),
+        candidate_limit=args.candidates,
+        min_gain=args.min_gain,
+        include_questionable=not args.strict_health,
+        skip_schedule=args.no_schedule,
+    )
+    report = matchup_mod.run(client, result)
+    print_matchup(report)
+    report_mod.print_footer(result)
+    return 0
+
+
 def cmd_lineup(args: argparse.Namespace) -> int:
     result = _run_analysis(args)
     if args.json:
@@ -471,6 +493,7 @@ def build_parser() -> argparse.ArgumentParser:
     for name, handler, help_text in [
         ("run", cmd_run, "full report: waivers, lineup, roster, categories"),
         ("waivers", cmd_waivers, "add/drop suggestions only"),
+        ("matchup", cmd_matchup, "this week's H2H: category outlook, opponent, moves"),
         ("lineup", cmd_lineup, "start/sit for a date"),
         ("roster", cmd_roster, "your roster with valuations"),
     ]:

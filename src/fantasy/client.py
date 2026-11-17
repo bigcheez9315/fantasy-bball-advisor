@@ -228,6 +228,36 @@ class FantasyClient:
     def team(self, team_key: str | None = None) -> Any:
         return self.league().to_team(team_key or self.my_team_key())
 
+    def _get_json(self, path: str) -> dict:
+        sep = "&" if "?" in path else "?"
+        response = self.oauth.session.get(f"{API_BASE}/{path}{sep}format=json")
+        response.raise_for_status()
+        self.api_calls += 1
+        return response.json()
+
+    def matchup_raw(self, week: int | None = None) -> dict:
+        """This week's H2H matchup: both teams' week-to-date totals."""
+        week = week or self.league().current_week()
+        team_key = self.my_team_key()
+        return self._cached(
+            "roster", f"matchup:{team_key}:{week}",
+            lambda: self._get_json(f"team/{team_key}/matchups;weeks={week}"),
+        )
+
+    def transactions_raw(self, team_key: str) -> dict:
+        league_key = self.league_key or self.league().league_id
+        return self._cached(
+            "roster", f"tx:{team_key}",
+            lambda: self._get_json(
+                f"league/{league_key}/transactions;team_key={team_key};types=add,drop"
+            ),
+        )
+
+    def team_roster(self, team_key: str) -> list[dict]:
+        return self._cached(
+            "roster", f"roster:{team_key}:today", lambda: self.team(team_key).roster()
+        )
+
     # -- players ------------------------------------------------------------
 
     def my_roster(self, day: str | None = None) -> list[dict]:
