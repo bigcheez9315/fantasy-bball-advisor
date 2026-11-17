@@ -32,6 +32,17 @@ PCT_PARTS = {"FG%": ("FGM", "FGA"), "FT%": ("FTM", "FTA")}
 MIN_GAMES = {"last7": 1.0, "last30": 3.0, "season": 5.0}
 # Pool membership is stricter -- fringe samples would inflate the spread.
 POOL_MIN_GAMES = {"last7": 2.0, "last30": 5.0, "season": 8.0}
+# Games at which a window earns its full blend weight. Below this, the weight
+# scales down linearly: a 1-game L7 (one 1-for-10 night) shouldn't carry the
+# same 40% as a 4-game week.
+FULL_WEIGHT_GAMES = {"last7": 3.0, "last30": 10.0, "season": 15.0}
+# A trend read off fewer L7 games than this is noise; fall back to L30.
+TREND_MIN_GAMES = 2.0
+
+
+def sample_reliability(games: float, window: str) -> float:
+    full = FULL_WEIGHT_GAMES.get(window, 1.0)
+    return max(0.0, min(1.0, games / full))
 
 
 @dataclass
@@ -210,7 +221,11 @@ def score_players(
                 score * cat_weights.get(cat, 1.0) for cat, score in z.items()
             )
 
-        available = {w: window_weights[w] for w in player.z if w in window_weights}
+        available = {
+            w: window_weights[w] * sample_reliability(player.window(w).games, w)
+            for w in player.z
+            if w in window_weights
+        }
         total_weight = sum(available.values())
         if total_weight <= 0:
             player.blended_z = {}
@@ -229,7 +244,9 @@ def score_players(
             score * cat_weights.get(cat, 1.0) for cat, score in blended.items()
         )
 
-        recent = player.value.get("last7", player.value.get("last30"))
+        recent = player.value.get("last30")
+        if "last7" in player.value and player.window("last7").games >= TREND_MIN_GAMES:
+            recent = player.value["last7"]
         baseline = player.value.get("season", player.value.get("last30"))
         player.trend = (recent - baseline) if (recent is not None and baseline is not None) else 0.0
 

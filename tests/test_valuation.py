@@ -149,3 +149,21 @@ def test_parse_window_divides_totals_by_games_played():
 def test_parse_window_without_games_is_unusable():
     assert not parse_window({"PTS": 100.0}, ["PTS"]).usable
     assert not parse_window({}, ["PTS"]).usable
+
+
+def test_one_game_window_does_not_carry_full_weight():
+    pool = [
+        make_player(i, f"p{i}", {"PTS": pts, "FGM": 5, "FGA": 10}, games=15)
+        for i, pts in enumerate([10.0, 20.0, 30.0], start=1)
+    ]
+    pools = {w: build_pool(pool, ["PTS"], w) for w in ("last7", "last30", "season")}
+
+    # Solid season (+1.0), one awful game in L7 (-1.0).
+    slumper = make_player(7, "slumper", {"PTS": 30.0, "FGM": 5, "FGA": 10}, games=15)
+    slumper.windows["last7"] = Window(games=1, per_game={"PTS": 10.0, "FGM": 5, "FGA": 10})
+
+    score_players([slumper], pools, ["PTS"], WindowWeights())
+    # Unshrunk 40/40/20 blend would be 0.2; the 1-game L7 gets 1/3 weight.
+    assert slumper.blended_value > 0.5
+    # And a 1-game L7 doesn't define the trend.
+    assert slumper.trend == pytest.approx(0.0)
