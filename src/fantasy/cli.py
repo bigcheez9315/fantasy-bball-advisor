@@ -365,6 +365,26 @@ def cmd_matchup(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_compare(args: argparse.Namespace) -> int:
+    from . import compare as compare_mod
+
+    client = _client(args)
+    result = analysis_mod.run(
+        client,
+        date=_parse_date(getattr(args, "date", None)),
+        mode=args.mode,
+        weights=WindowWeights.parse(args.weights),
+        candidate_limit=args.candidates,
+        min_gain=args.min_gain,
+        include_questionable=not args.strict_health,
+        skip_schedule=True,
+    )
+    items = compare_mod.collect(client, result, args.players, days=args.days)
+    compare_mod.print_compare(items)
+    report_mod.print_footer(result)
+    return 0
+
+
 def cmd_lineup(args: argparse.Namespace) -> int:
     result = _run_analysis(args)
     if args.json:
@@ -500,6 +520,16 @@ def build_parser() -> argparse.ArgumentParser:
         child = sub.add_parser(name, help=help_text)
         add_analysis_flags(child)
         child.set_defaults(func=handler)
+
+    compare_parser = sub.add_parser(
+        "compare", help="side-by-side: role, shot volume, recent games"
+    )
+    add_analysis_flags(compare_parser)
+    compare_parser.add_argument("players", nargs="+", help='names, e.g. "Keegan Murray"')
+    compare_parser.add_argument(
+        "--days", type=int, default=7, help="game log lookback in days (default 7)"
+    )
+    compare_parser.set_defaults(func=cmd_compare)
 
     auth_parser = sub.add_parser("auth", help="run the one-time Yahoo OAuth consent")
     auth_parser.add_argument(

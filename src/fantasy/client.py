@@ -6,6 +6,8 @@ lineups -- lives in this package.
 """
 from __future__ import annotations
 
+import datetime as dt
+
 import hashlib
 import logging
 import time
@@ -348,6 +350,43 @@ class FantasyClient:
                 self._memo[f"stats:{window}:{pid}"] = row
 
         return out
+
+    def day_stats(self, player_ids: Iterable[int], day: dt.date) -> dict[int, dict]:
+        """One day's stat line per player (GP 0 = no game). Not cached."""
+        ids = [int(p) for p in dict.fromkeys(player_ids)]
+        game_key = self.league().league_id.split(".l.")[0]
+        rows: list[dict] = []
+        for start in range(0, len(ids), 25):
+            keys = ",".join(f"{game_key}.p.{pid}" for pid in ids[start : start + 25])
+            url = (
+                f"{API_BASE}/players;player_keys={keys}"
+                f"/stats;type=date;date={day.isoformat()}?format=json"
+            )
+            response = self.oauth.session.get(url)
+            response.raise_for_status()
+            rows.extend(parse_players_stats(response.json()))
+            self.api_calls += 1
+        return {int(r["player_id"]): r for r in rows}
+
+    def find_player(self, name: str) -> dict | None:
+        """Search any player by name; returns Player(**kwargs) fields."""
+        hits = self.league().player_details(name)
+        self.api_calls += 1
+        if not hits:
+            return None
+        exact = [h for h in hits if h["name"]["full"].casefold() == name.casefold()]
+        hit = (exact or hits)[0]
+        return {
+            "pid": int(hit["player_id"]),
+            "name": hit["name"]["full"],
+            "team": hit.get("editorial_team_abbr", "").upper(),
+            "positions": [
+                e["position"] for e in hit.get("eligible_positions", [])
+                if e.get("position") not in {"IL", "IL+", "BN", "Util"}
+            ],
+            "status": hit.get("status", "") or "",
+            "source": "other",
+        }
 
     def standings(self) -> list[dict]:
         key = self.league_key or ""
