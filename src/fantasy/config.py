@@ -82,6 +82,28 @@ def streamer_names() -> set[str]:
     return {name.strip().casefold() for name in raw.split(",") if name.strip()}
 
 
+def punt_cats() -> set[str]:
+    """PUNT_CATS in .env: categories you've conceded (e.g. TO). They get zero
+    weight in player values and don't count toward expected wins."""
+    raw = env("PUNT_CATS") or ""
+    return {canonical_cat(c) for c in raw.split(",") if c.strip()}
+
+
+def returning_players() -> dict[str, "dt.date"]:
+    """RETURNING in .env: 'Name:YYYY-MM-DD,...' for injured players expected
+    back. Activating one forces a drop, which the matchup plan accounts for."""
+    import datetime as dt
+
+    out: dict[str, dt.date] = {}
+    for item in (env("RETURNING") or "").split(","):
+        name, _, day = item.rpartition(":")
+        try:
+            out[name.strip().casefold()] = dt.date.fromisoformat(day.strip())
+        except ValueError:
+            continue
+    return out
+
+
 def require_env(key: str, hint: str = "") -> str:
     value = env(key)
     if not value:

@@ -22,7 +22,7 @@ from typing import Iterable, Sequence
 
 import numpy as np
 
-from .config import NEGATIVE_CATS, WindowWeights, canonical_cat
+from .config import NEGATIVE_CATS, WindowWeights, canonical_cat, punt_cats
 from .players import WINDOW_ORDER, Player
 
 PCT_CATS = {"FG%", "FT%"}
@@ -173,8 +173,9 @@ def category_weights(
     is ever fully ignored.
     """
     cats = [canonical_cat(c) for c in cats]
+    punted = punt_cats()
     if mode == "balanced":
-        return {cat: 1.0 for cat in cats}
+        return {cat: 0.0 if cat in punted else 1.0 for cat in cats}
     if mode != "needs":
         raise SystemExit(f"unknown weighting mode {mode!r} (use balanced|needs)")
 
@@ -185,7 +186,7 @@ def category_weights(
     for cat in cats:
         team_z = sum(p.blended_z.get(cat, 0.0) for p in ranked)
         weight = math.exp(-((team_z / scale) ** 2) / 2.0)
-        weights[cat] = max(floor, weight)
+        weights[cat] = 0.0 if cat in punted else max(floor, weight)
     return weights
 
 

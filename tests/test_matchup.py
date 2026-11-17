@@ -1,3 +1,4 @@
+import pytest
 """Matchup parsing and projection. Payload values are synthetic; only the
 nesting mirrors Yahoo's responses."""
 import datetime as dt
@@ -140,3 +141,33 @@ def test_keeper_safe_filter_skips_costly_drops():
     assert best_per_add([costly, safe], keeper_safe=True) == [safe]
     assert best_per_add([costly, safe], keeper_safe=False) == [costly]
     assert best_per_add([costly, safe]) == [costly]
+
+
+def test_punted_category_never_counts_as_a_win(monkeypatch):
+    from fantasy.matchup import CatOutlook, expected_wins
+
+    rows = [CatOutlook("PTS", 0, 0, 0, 0, 0.8), CatOutlook("TO", 0, 0, 0, 0, 0.9)]
+    assert expected_wins(rows) == pytest.approx(1.7)
+    monkeypatch.setenv("PUNT_CATS", "TO")
+    assert expected_wins(rows) == pytest.approx(0.8)
+
+
+def test_returning_player_forces_drop_of_lowest_long_term_value():
+    import datetime as dt
+
+    from fantasy.matchup import apply_returns
+    from fantasy.players import Player
+
+    def mk(pid, name, value, **kw):
+        p = Player(pid=pid, name=name, positions=["PF"], team="AAA", **kw)
+        p.blended_value = value
+        return p
+
+    days = [dt.date(2026, 11, 17) + dt.timedelta(days=i) for i in range(6)]
+    reaves = mk(1, "Austin Reaves", 4.0, status="O")
+    randle = mk(2, "Julius Randle", -0.7)   # plays badly-timed days, still keep
+    ware = mk(3, "Kel'el Ware", -3.4)
+    ret = apply_returns([reaves, randle, ware], {"austin reaves": days[1]}, days)
+    (back, drop, when), = ret.forced
+    assert (back.name, drop.name, when) == ("Austin Reaves", "Kel'el Ware", days[1])
+    assert not back.is_out and reaves.is_out  # original untouched

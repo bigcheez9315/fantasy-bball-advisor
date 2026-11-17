@@ -10,13 +10,14 @@ but "which categories can still flip before Sunday".
 """
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import math
 from dataclasses import dataclass, field
 from typing import Any
 
 from . import lineup as lineup_mod
-from .config import NEGATIVE_CATS, canonical_cat
+from .config import NEGATIVE_CATS, canonical_cat, punt_cats, returning_players
 from .players import Player
 from .schedule import Schedule
 from .statmap import NBA_STAT_IDS
@@ -299,7 +300,48 @@ def outlook(
 
 
 def expected_wins(rows: list[CatOutlook]) -> float:
-    return sum(r.p_win for r in rows)
+    """Expected categories won, ignoring the ones you've punted."""
+    punted = punt_cats()
+    return sum(r.p_win for r in rows if r.cat not in punted)
+
+
+@dataclass
+class Returns:
+    """Injured players coming back this week, and who has to go to make room."""
+
+    roster: list[Player]
+    available_from: dict[int, dt.date] = field(default_factory=dict)
+    unavailable_from: dict[int, dt.date] = field(default_factory=dict)
+    forced: list[tuple[Player, Player, dt.date]] = field(default_factory=list)
+
+
+def apply_returns(
+    players: list[Player], returning: dict[str, dt.date], days: list[dt.date]
+) -> Returns:
+    """Activate returning IL players on their date. Each costs a roster spot,
+    filled by dropping the lowest *long-term* value player you're willing to
+    drop. Schedule fit is deliberately not the tiebreak: the roster you keep
+    matters more than one week's games."""
+    from .waivers import drop_pool
+
+    out = Returns(roster=list(players))
+    if not days:
+        return out
+    pool = sorted(drop_pool(players), key=lambda p: p.blended_value)
+    for i, player in enumerate(out.roster):
+        when = returning.get(player.name.casefold())
+        if when is None or when > days[-1] or not player.is_out:
+            continue
+        back = copy.copy(player)
+        back.status = ""
+        out.roster[i] = back
+        when = max(when, days[0])
+        out.available_from[back.pid] = when
+        if pool:
+            drop = pool.pop(0)
+            out.unavailable_from[drop.pid] = when
+            out.forced.append((back, drop, when))
+    return out
 
 
 # -- moves --------------------------------------------------------------------
@@ -314,6 +356,10 @@ class WeekMove:
     effective: dt.date
     swings: dict[str, float]  # cat -> change in P(win)
     fit: lineup_mod.Fit | None = None  # starts vs games once he's live
+    # Extra players this move costs you beyond the plain drop: when an IL
+    # return forces a drop anyway, dropping that same player now just moves
+    # the forced drop onto the next one.
+    also_drops: list[Player] = field(default_factory=list)
 
 
 def evaluate_moves(
@@ -327,6 +373,7 @@ def evaluate_moves(
     schedule: Schedule,
     base: list[CatOutlook],
     waiver_days: int = DEFAULT_WAIVER_DAYS,
+    returning: dict[str, dt.date] | None = None,
 ) -> list[WeekMove]:
     """Every add/drop pair that lifts expected categories won, best first."""
     if not days:
@@ -337,6 +384,7 @@ def evaluate_moves(
     from .waivers import drop_pool
 
     droppable = drop_pool(my_players)
+    base_gone = {d.pid for _, d, _ in apply_returns(my_players, returning or {}, days).forced}
     for add in candidates:
         if add.is_out or not rates(add):
             continue
@@ -345,17 +393,23 @@ def evaluate_moves(
             continue
         for drop in droppable:
             roster = [p for p in my_players if p.pid != drop.pid] + [add]
+            # The forced IL drop is recomputed on the post-move roster; the
+            # dropped player stays only until the move takes effect.
+            ret = apply_returns(roster, returning or {}, days)
             proj = project(
                 matchup.me.totals,
-                roster + [drop],
+                ret.roster + [drop],
                 slots,
                 days,
                 schedule,
-                available_from={add.pid: effective},
-                unavailable_from={drop.pid: effective},
+                available_from={**ret.available_from, add.pid: effective},
+                unavailable_from={**ret.unavailable_from, drop.pid: effective},
             )
             rows = outlook(cats, matchup.me.totals, matchup.opp.totals, proj, opp_proj)
             delta = expected_wins(rows) - base_wins
+            # Long-term cost = everyone who leaves vs. the no-move plan.
+            gone = [drop] + [d for _, d, _ in ret.forced]
+            extra = [p for p in gone if p.pid not in base_gone]
             if delta <= 0.05:
                 continue
             moves.append(
@@ -363,7 +417,7 @@ def evaluate_moves(
                     add=add,
                     drop=drop,
                     delta_wins=delta,
-                    season_delta=add.blended_value - drop.blended_value,
+                    season_delta=add.blended_value - sum(p.blended_value for p in extra),
                     effective=effective,
                     swings={
                         r.cat: r.p_win - base_p[r.cat]
@@ -371,17 +425,18 @@ def evaluate_moves(
                         if abs(r.p_win - base_p[r.cat]) >= 0.03
                     },
                     fit=lineup_mod.lineup_fit(
-                        add, roster, slots, schedule, [d for d in days if d >= effective]
+                        add, ret.roster, slots, schedule, [d for d in days if d >= effective]
                     ),
+                    also_drops=[d for _, d, _ in ret.forced],
                 )
             )
     moves.sort(key=lambda m: -m.delta_wins)
     return moves
 
 
-# A move that loses less than this much blended value is "keeper-safe": you're
-# not giving up a better long-term player to win one week.
-KEEPER_SAFE_SEASON_DELTA = -0.5
+# Long-term first: a move is only offered if the player you add is at least as
+# good over the season as the one you drop. Winning a week is the tiebreak.
+KEEPER_SAFE_SEASON_DELTA = 0.0
 
 
 def best_per_add(
@@ -423,6 +478,7 @@ class MatchupReport:
     my_moves_this_week: list[Move]
     opp_moves_this_week: list[Move]
     best_moves: list[WeekMove]
+    forced_drops: list[tuple[Player, Player, dt.date]] = field(default_factory=list)
 
     @property
     def my_adds_left(self) -> int:
@@ -479,7 +535,12 @@ def run(client: Any, analysis: Any, today: dt.date | None = None) -> MatchupRepo
     days = remaining_days(matchup, today)
     schedule = analysis.schedule
     slots = analysis.slots
-    me_proj = project(matchup.me.totals, analysis.my_players, slots, days, schedule)
+    returning = returning_players()
+    ret = apply_returns(analysis.my_players, returning, days)
+    me_proj = project(
+        matchup.me.totals, ret.roster, slots, days, schedule,
+        available_from=ret.available_from, unavailable_from=ret.unavailable_from,
+    )
     opp_proj = project(matchup.opp.totals, opp_players, slots, days, schedule)
     rows = outlook(analysis.cats, matchup.me.totals, matchup.opp.totals, me_proj, opp_proj)
 
@@ -509,6 +570,7 @@ def run(client: Any, analysis: Any, today: dt.date | None = None) -> MatchupRepo
         best = evaluate_moves(
             analysis.cats, matchup, analysis.my_players, analysis.available,
             opp_proj, slots, days, schedule, rows, waiver_days=waiver_days,
+            returning=returning,
         )
 
     my_moves = parse_transactions(client.transactions_raw(my_key), my_key, matchup.start)
@@ -519,4 +581,5 @@ def run(client: Any, analysis: Any, today: dt.date | None = None) -> MatchupRepo
         rows=rows, rows_if_opp_streams=rows_streamed, opp_streamers=streamers,
         me_proj=me_proj, opp_proj=opp_proj, opp_players=opp_players,
         my_moves_this_week=my_moves, opp_moves_this_week=opp_moves, best_moves=best,
+        forced_drops=ret.forced,
     )

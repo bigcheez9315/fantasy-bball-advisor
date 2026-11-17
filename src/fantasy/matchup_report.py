@@ -3,7 +3,10 @@ from __future__ import annotations
 
 from rich.table import Table
 
-from .matchup import PCT_PARTS, MatchupReport, WeekMove, best_per_add, rates
+from .config import punt_cats
+from .matchup import (
+    PCT_PARTS, MatchupReport, WeekMove, best_per_add, expected_wins, rates,
+)
 from .report import console
 
 
@@ -15,6 +18,11 @@ def _print_move(report: MatchupReport, i: int, mv: WeekMove) -> None:
         f"[bold]+{mv.delta_wins:.2f} cats[/bold]   season value {mv.season_delta:+.2f}   "
         f"live {mv.effective:%a}"
     )
+    for gone in mv.also_drops:
+        console.print(
+            f"     then drop {gone.name} ({gone.blended_value:+.2f}) when your IL "
+            "player returns; season value above is vs him"
+        )
     if mv.fit and mv.fit.games:
         console.print(f"     {mv.fit.describe()}")
     if mv.swings:
@@ -56,10 +64,12 @@ def print_matchup(report: MatchupReport) -> None:
             f"{r.p_win:.0%}", r.label, f"{streamed[r.cat].p_win:.0%}",
         )
     console.print(table)
-    exp = sum(r.p_win for r in report.rows)
-    exp_s = sum(r.p_win for r in report.rows_if_opp_streams)
+    exp = expected_wins(report.rows)
+    exp_s = expected_wins(report.rows_if_opp_streams)
+    punted = punt_cats()
+    counted = sum(1 for r in report.rows if r.cat not in punted)
     console.print(
-        f"Expected categories won: [bold]{exp:.1f}[/bold] of {len(report.rows)}   "
+        f"Expected categories won: [bold]{exp:.1f}[/bold] of {counted}   "
         f"(if opp spends {len(report.opp_streamers)} add(s) on streamers: {exp_s:.1f})"
     )
     if report.opp_streamers:
@@ -92,17 +102,24 @@ def print_matchup(report: MatchupReport) -> None:
                 f"  {mv.when:%a %m/%d %I:%M%p} ET  {mv.kind.upper():4} {mv.player} {mv.team}{src}"
             )
 
-    console.rule("Moves for THIS week (ranked by change in expected categories won)")
+    if report.forced_drops:
+        console.rule("Players coming back")
+        for back, drop, when in report.forced_drops:
+            console.print(
+                f"  {back.name} back {when:%a %m/%d}: activating him means a drop. "
+                f"Lowest long-term value you'd drop: {drop.name} "
+                f"({drop.blended_value:+.2f}). Projection assumes this."
+            )
+
+    console.rule("Moves for THIS week (only ones that keep or raise season value)")
     if report.my_adds_left == 0:
         console.print("You have no adds left this week.")
     elif not report.best_moves:
         console.print("No add/drop raises expected categories won by more than 0.05.")
     else:
         sections = (
-            ("Keeper-safe (you don't give up long-term value)",
+            ("Upgrades now and long-term, ranked by this week's gain",
              best_per_add(report.best_moves, keeper_safe=True)),
-            ("Pure streams (best for this week, costs long-term value)",
-             best_per_add(report.best_moves, keeper_safe=False)),
         )
         for title, moves in sections:
             console.print(f"\n[bold]{title}[/bold]")

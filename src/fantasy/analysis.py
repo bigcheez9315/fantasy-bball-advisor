@@ -156,7 +156,8 @@ def run(
     analysis.pool_size = max((p.size for p in analysis.pools.values()), default=0)
 
     all_players = list(everyone.values())
-    score_players(all_players, analysis.pools, analysis.cats, weights)
+    analysis.cat_weights = category_weights(my_players, analysis.cats, "balanced")
+    score_players(all_players, analysis.pools, analysis.cats, weights, analysis.cat_weights)
 
     if mode == "needs":
         # Needs weighting depends on roster strength, which depends on a first
@@ -165,8 +166,6 @@ def run(
         score_players(
             all_players, analysis.pools, analysis.cats, weights, analysis.cat_weights
         )
-    else:
-        analysis.cat_weights = category_weights(my_players, analysis.cats, "balanced")
 
     analysis.my_players = my_players
     analysis.available = candidates
