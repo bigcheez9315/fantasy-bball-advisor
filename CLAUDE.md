@@ -35,10 +35,15 @@ uncached run is 30+ API calls.
 
 ## Things that are easy to get wrong
 
-- **Stat ids**: the `yahoo_fantasy_api` SDK has no NBA static stat-id map, so it
-  drops GP, FGM/FGA and FTM/FTA from responses. `statmap.py` injects them. If
-  percentages stop being valued, run `python -m fantasy probe` — that's the
-  symptom of a wrong id.
+- **Stats come from the game-level endpoint, not `league.player_stats()`.** In
+  league context Yahoo returns only the scoring categories, with no GP, so
+  every player was unusable and the valuation pool was 0. `client.stats()` calls
+  `/players;player_keys=.../stats;type=...` directly, which returns the full set
+  (GP, FGM/FGA, ...). `statmap.py` names those ids. If the pool size reads 0,
+  this is the first thing to check.
+- **Roster slots come from `league.positions()`.** Real `settings()` has no
+  `roster_positions`. `tests/test_client_parsing.py` pins both real shapes; the
+  `FakeClient` can't catch these because it fakes the post-parse layer.
 - **Percentage categories** are valued by volume (`FGM - FGA * league_FG%`), not
   raw percentage. Don't "simplify" this to a plain z-score of FG% — it makes
   2-for-2 players look elite. `tests/test_valuation.py` pins the behavior.

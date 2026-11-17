@@ -24,7 +24,66 @@ from .config import (
     save_json,
 )
 from . import auth
-from .statmap import install_stat_map
+from .statmap import NBA_STAT_IDS, install_stat_map
+
+API_BASE = "https://fantasysports.yahooapis.com/fantasy/v2"
+NON_STARTING = {"BN", "IL", "IL+", "IR", "NA"}
+
+
+def slots_from_positions(positions: dict) -> list[str]:
+    """Expand the SDK's `positions()` map into a flat list of startable slots."""
+    slots: list[str] = []
+    for position, info in (positions or {}).items():
+        if position in NON_STARTING:
+            continue
+        info = info or {}
+        if str(info.get("is_starting_position", 1)) == "0":
+            continue
+        slots.extend([position] * int(info.get("count", 0) or 0))
+    return slots
+
+
+def _to_number(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_players_stats(payload: dict) -> list[dict]:
+    """Flatten a game-level `/players;player_keys=.../stats` response.
+
+    Yahoo nests each player as `{"player": [[meta dicts...], {"player_stats":
+    {"stats": [{"stat": {"stat_id", "value"}}, ...]}}]}`. Output rows match
+    what `players.parse_window` expects: named numeric totals (GP included),
+    with made/attempted kept as discrete FGM/FGA/FTM/FTA.
+    """
+    players = (payload.get("fantasy_content") or {}).get("players") or {}
+    rows: list[dict] = []
+    for key, entry in players.items():
+        if key == "count" or not isinstance(entry, dict):
+            continue
+        parts = entry.get("player") or []
+        row: dict[str, Any] = {}
+        for part in parts:
+            if isinstance(part, list):  # metadata: list of single-key dicts
+                for item in part:
+                    if not isinstance(item, dict):
+                        continue
+                    if "player_id" in item:
+                        row["player_id"] = int(item["player_id"])
+                    if "name" in item and isinstance(item["name"], dict):
+                        row["name"] = item["name"].get("full", "")
+            elif isinstance(part, dict) and "player_stats" in part:
+                for stat in part["player_stats"].get("stats", []):
+                    stat = stat.get("stat", {})
+                    name = NBA_STAT_IDS.get(int(stat.get("stat_id", -1)))
+                    number = _to_number(stat.get("value"))
+                    if name and number is not None:
+                        row[name] = number
+        if "player_id" in row:
+            rows.append(row)
+    return rows
 
 # yahoo_oauth logs every token check at INFO; quiet it down.
 logging.getLogger("yahoo_oauth").setLevel(logging.WARNING)
@@ -104,7 +163,7 @@ class FantasyClient:
             if not key:
                 raise SystemExit(
                     "No league key. Run `python -m fantasy leagues` to list "
-                    "yours, then `python -m fantasy init --league <key>`."
+                    "yours, then `python -m fantasy --league <key> init`."
                 )
             self.league_key = key
             self._league = self.game().to_league(key)
@@ -148,16 +207,16 @@ class FantasyClient:
         return [canonical_cat(c["display_name"]) for c in raw]
 
     def roster_slots(self) -> list[str]:
-        """Startable lineup slots, e.g. ['PG','SG','G','SF','PF','F','C','Util',...]."""
-        settings = self.settings()
-        slots: list[str] = []
-        for entry in settings.get("roster_positions", []):
-            position = entry.get("position")
-            count = int(entry.get("count", 0) or 0)
-            if position in {"BN", "IL", "IL+", "IR", "NA"}:
-                continue
-            slots.extend([position] * count)
-        return slots
+        """Startable lineup slots, e.g. ['PG','SG','G','SF','PF','F','C','Util',...].
+
+        `settings()` does not carry roster positions on real leagues; the SDK
+        exposes them separately via `positions()`.
+        """
+        key = self.league_key or ""
+        positions = self._cached(
+            "settings", f"positions:{key}", lambda: self.league().positions()
+        )
+        return slots_from_positions(positions)
 
     def my_team_key(self) -> str:
         explicit = env("TEAM_KEY")
@@ -229,9 +288,22 @@ class FantasyClient:
                 missing.append(pid)
 
         if missing:
-            league = self.league()
-            fetched = league.player_stats(missing, req_type)
-            self.api_calls += max(1, len(missing) // 25)
+            # Not league.player_stats(): in league context Yahoo returns only
+            # the scoring categories -- no GP, so window totals can't become
+            # per-game rates. The game-level endpoint returns the full set.
+            fetched: list[dict] = []
+            game_key = self.league().league_id.split(".l.")[0]
+            for start in range(0, len(missing), 25):
+                chunk = missing[start : start + 25]
+                keys = ",".join(f"{game_key}.p.{pid}" for pid in chunk)
+                url = (
+                    f"{API_BASE}/players;player_keys={keys}"
+                    f"/stats;type={req_type}?format=json"
+                )
+                response = self.oauth.session.get(url)
+                response.raise_for_status()
+                fetched.extend(parse_players_stats(response.json()))
+                self.api_calls += 1
             by_id = {int(row["player_id"]): row for row in fetched if "player_id" in row}
             for pid in missing:
                 row = by_id.get(pid, {})

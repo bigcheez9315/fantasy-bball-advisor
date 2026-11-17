@@ -111,7 +111,7 @@ Then point it at your league:
 
 ```bash
 python -m fantasy init          # auto-picks your current-season NBA league
-python -m fantasy init --league 466.l.12345   # or name it explicitly
+python -m fantasy --league 466.l.12345 init   # or name it explicitly
 ```
 
 ### Something not working?

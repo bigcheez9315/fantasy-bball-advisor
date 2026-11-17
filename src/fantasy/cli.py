@@ -95,7 +95,7 @@ def cmd_auth(args: argparse.Namespace) -> int:
             f"  {league['league_key']:<20} {league.get('season', '?'):<6} "
             f"{league.get('name', '')}"
         )
-    print("\nNext: python -m fantasy init --league <key>")
+    print("\nNext: python -m fantasy --league <key> init")
     return 0
 
 
@@ -198,7 +198,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         "LEAGUE_KEY saved in .env",
         bool(league_key),
         league_key or "",
-        fix="python -m fantasy init --league <key from above>",
+        fix="python -m fantasy --league <key from above> init",
     ):
         return 1
 
@@ -287,7 +287,7 @@ def cmd_leagues(args: argparse.Namespace) -> int:
             f"{league.get('num_teams', '?'):>2} teams  "
             f"{league.get('scoring', ''):<12} {league.get('name', '')}"
         )
-    print("\nPick the key for this season, then: python -m fantasy init --league <key>")
+    print("\nPick the key for this season, then: python -m fantasy --league <key> init")
     return 0
 
 
