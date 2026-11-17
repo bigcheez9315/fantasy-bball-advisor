@@ -13,7 +13,14 @@ from . import lineup as lineup_mod
 from . import schedule as schedule_mod
 from . import waivers as waivers_mod
 from .client import FantasyClient
-from .config import WindowWeights, canonical_cat, protect_owned_pct, protected_names
+from .config import (
+    STREAMER_OWNED_PCT,
+    WindowWeights,
+    canonical_cat,
+    protect_owned_pct,
+    protected_names,
+    streamer_names,
+)
 from .players import WINDOW_ORDER, Player, attach_stats, parse_row
 from .valuation import (
     PoolModel,
@@ -100,11 +107,15 @@ def run(
 
     # Roster rows carry no ownership %; the league-wide taken list does.
     owned = {int(r["player_id"]): float(r.get("percent_owned") or 0) for r in taken_rows}
-    floor, names = protect_owned_pct(), protected_names()
+    floor, names, streamers = protect_owned_pct(), protected_names(), streamer_names()
     for player in my_players:
         player.pct_owned = owned.get(player.pid, player.pct_owned)
-        player.protected = (
-            player.pct_owned >= floor or player.name.casefold() in names
+        key = player.name.casefold()
+        player.protected = player.pct_owned >= floor or key in names
+        # Low-owned pickups count as streamers automatically, so the list
+        # doesn't go stale every time you churn the spot.
+        player.streamer = not player.protected and (
+            key in streamers or (bool(streamers) and player.pct_owned < STREAMER_OWNED_PCT)
         )
     pool_players = [
         parse_row(r, "taken") for r in taken_rows if int(r["player_id"]) not in roster_ids

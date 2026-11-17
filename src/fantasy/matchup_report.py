@@ -13,8 +13,10 @@ def _print_move(report: MatchupReport, i: int, mv: WeekMove) -> None:
     console.print(
         f"  {i}. ADD {mv.add.name} {mv.add.team}{claim} / DROP {mv.drop.name}{out}   "
         f"[bold]+{mv.delta_wins:.2f} cats[/bold]   season value {mv.season_delta:+.2f}   "
-        f"live {mv.effective:%a}, {report.games_left(mv.add.team, mv.effective)}g left"
+        f"live {mv.effective:%a}"
     )
+    if mv.fit and mv.fit.games:
+        console.print(f"     {mv.fit.describe()}")
     if mv.swings:
         console.print("     " + ", ".join(
             f"{c} {d:+.0%}" for c, d in sorted(mv.swings.items(), key=lambda x: -abs(x[1]))

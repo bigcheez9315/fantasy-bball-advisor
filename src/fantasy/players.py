@@ -56,6 +56,9 @@ class Player:
     # Never suggested as a drop: high-ownership (the crowd's read on upside a
     # box score can't see, e.g. a #1-pick rookie) or named in PROTECTED_PLAYERS.
     protected: bool = False
+    # A roster spot you churn: the only players suggested as drops when any
+    # are set (STREAMERS in .env, plus anything you hold that's < 50% owned).
+    streamer: bool = False
 
     # Filled in by valuation.
     z: dict[str, dict[str, float]] = field(default_factory=dict)

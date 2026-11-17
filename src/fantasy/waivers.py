@@ -11,7 +11,7 @@ import datetime as dt
 from dataclasses import dataclass, field
 
 from .config import NEGATIVE_CATS
-from .lineup import fillable_slots
+from .lineup import Fit, fillable_slots, lineup_fit
 from .players import Player, current_minutes
 from .schedule import Schedule
 from .valuation import category_deltas
@@ -31,6 +31,7 @@ class Swap:
     reasons: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     legal: bool = True
+    fit: Fit | None = None
 
     @property
     def gains(self) -> list[tuple[str, float]]:
@@ -51,6 +52,14 @@ class WaiverReport:
     stash_candidates: list[Player] = field(default_factory=list)
     replacement_level: float = 0.0
     notes: list[str] = field(default_factory=list)
+
+
+def drop_pool(my_players: list[Player]) -> list[Player]:
+    """Who may be suggested as a drop: your streamer spots if you've named
+    any, else anyone not protected. Protected players never are."""
+    open_ = [p for p in my_players if not p.protected]
+    streamers = [p for p in open_ if p.streamer]
+    return streamers if streamers else open_
 
 
 def _sample_note(player: Player) -> str | None:
@@ -129,10 +138,9 @@ def recommend(
         if p.is_out and p.value.get("season", 0.0) > report.replacement_level
     ][:5]
 
-    droppable = sorted(
-        (p for p in my_players if not p.protected), key=lambda p: p.blended_value
-    )
+    droppable = sorted(drop_pool(my_players), key=lambda p: p.blended_value)
     roster_ids = {p.pid for p in my_players}
+    next_week = [today + dt.timedelta(days=d) for d in range(7)]
 
     seen_adds: set[int] = set()
     for add in candidates:
@@ -161,6 +169,15 @@ def recommend(
             continue
 
         best.reasons = _describe(add, schedule, today)
+        after = [p for p in my_players if p.pid != best.drop.pid] + [add]
+        best.fit = lineup_fit(add, after, slots, schedule, next_week)
+        if best.fit.games:
+            best.reasons.append(best.fit.describe())
+        if best.fit.games and best.fit.ratio < 0.6:
+            best.warnings.append(
+                f"poor schedule/position fit: {add.name} would start only "
+                f"{best.fit.starts} of {best.fit.games} games in the next 7 days"
+            )
         note = _sample_note(add)
         if note:
             best.warnings.append(f"{add.name}: {note}")

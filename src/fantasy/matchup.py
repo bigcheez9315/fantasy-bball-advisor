@@ -313,6 +313,7 @@ class WeekMove:
     season_delta: float  # blended value add - drop; negative = costs you long-term
     effective: dt.date
     swings: dict[str, float]  # cat -> change in P(win)
+    fit: lineup_mod.Fit | None = None  # starts vs games once he's live
 
 
 def evaluate_moves(
@@ -333,7 +334,9 @@ def evaluate_moves(
     base_p = {r.cat: r.p_win for r in base}
     base_wins = expected_wins(base)
     moves: list[WeekMove] = []
-    droppable = [p for p in my_players if not p.protected]
+    from .waivers import drop_pool
+
+    droppable = drop_pool(my_players)
     for add in candidates:
         if add.is_out or not rates(add):
             continue
@@ -367,6 +370,9 @@ def evaluate_moves(
                         for r in rows
                         if abs(r.p_win - base_p[r.cat]) >= 0.03
                     },
+                    fit=lineup_mod.lineup_fit(
+                        add, roster, slots, schedule, [d for d in days if d >= effective]
+                    ),
                 )
             )
     moves.sort(key=lambda m: -m.delta_wins)

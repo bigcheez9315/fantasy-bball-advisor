@@ -142,6 +142,55 @@ def optimize(
     return plan
 
 
+@dataclass
+class Fit:
+    """How many of a player's games he'd actually start on a given roster."""
+
+    starts: int = 0
+    games: int = 0
+    benched_days: list[dt.date] = field(default_factory=list)
+
+    @property
+    def ratio(self) -> float:
+        return self.starts / self.games if self.games else 0.0
+
+    def describe(self) -> str:
+        if not self.games:
+            return "no games in the window"
+        text = f"would start {self.starts} of his {self.games} games"
+        if self.benched_days:
+            days = ", ".join(f"{d:%a}" for d in self.benched_days)
+            text += f" (benched {days}: your lineup/position is already full)"
+        return text
+
+
+def lineup_fit(
+    player: Player,
+    roster: list[Player],
+    slots: list[str],
+    schedule: Schedule,
+    days: list[dt.date],
+) -> Fit:
+    """Day-by-day: does this player crack the optimized lineup on `roster`?
+
+    This is the real value of a pickup. Games on days your slots for his
+    positions are already full of better players are worth nothing.
+    """
+    fit = Fit()
+    if not schedule.available:
+        return fit
+    for day in days:
+        if not schedule.plays_on(player.team, day) or player.is_out:
+            continue
+        fit.games += 1
+        plan = optimize(roster, slots, date=day, schedule=schedule)
+        if player.pid in plan.starter_ids():
+            fit.starts += 1
+        else:
+            fit.benched_days.append(day)
+    return fit
+
+
 def fillable_slots(players: list[Player], slots: list[str]) -> int:
     """How many slots this player set can cover, ignoring value and schedule.
 

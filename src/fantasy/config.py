@@ -73,6 +73,15 @@ def protected_names() -> set[str]:
     return {name.strip().casefold() for name in raw.split(",") if name.strip()}
 
 
+STREAMER_OWNED_PCT = 50.0
+
+
+def streamer_names() -> set[str]:
+    """STREAMERS in .env: comma-separated roster spots you treat as churn."""
+    raw = env("STREAMERS") or ""
+    return {name.strip().casefold() for name in raw.split(",") if name.strip()}
+
+
 def require_env(key: str, hint: str = "") -> str:
     value = env(key)
     if not value:
